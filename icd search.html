@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Pencarian Kode ICD (AI-Powered)</title>
+    <!-- Tailwind CSS CDN untuk styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-6 sm:p-10">
+        <h1 class="text-3xl font-bold text-center text-blue-800 mb-6">Aplikasi Pencarian Kode ICD</h1>
+        <p class="text-center text-gray-600 mb-8">
+            Pencarian ditenagai oleh AI.
+        </p>
+
+        <!-- Tombol untuk memilih mode pencarian (Diagnosa atau Tindakan) -->
+        <div class="flex justify-center space-x-4 mb-8">
+            <button id="tab-icd10" class="px-6 py-2 rounded-full font-semibold transition-colors duration-200 bg-blue-600 text-white shadow-md hover:bg-blue-700">
+                Diagnosa (ICD-10)
+            </button>
+            <button id="tab-icd9" class="px-6 py-2 rounded-full font-semibold transition-colors duration-200 bg-gray-200 text-gray-700 shadow-md hover:bg-gray-300">
+                Tindakan (ICD-9)
+            </button>
+        </div>
+
+        <!-- Bagian Pencarian -->
+        <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
+            <input type="text" id="searchInput" placeholder="Cari diagnosa, misalnya: demam berdarah"
+                class="flex-grow p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200 text-base"
+                aria-label="Input pencarian kode ICD">
+            <button id="searchButton" class="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold shadow-md hover:bg-blue-700 transition-colors duration-200">
+                Cari
+            </button>
+        </div>
+
+        <!-- Area untuk menampilkan hasil pencarian -->
+        <div id="resultsContainer">
+            <!-- Hasil pencarian akan ditampilkan di sini secara dinamis -->
+            <p class="text-center text-gray-500">Ketik kata kunci atau kode untuk memulai pencarian.</p>
+        </div>
+        
+        <!-- Area untuk menampilkan riwayat pencarian -->
+        <div id="historyContainer" class="mt-8 pt-6 border-t border-gray-200 hidden">
+            <h2 class="text-xl font-bold text-gray-700 mb-4">Pencarian Terakhir</h2>
+            <div id="historyList" class="flex flex-wrap gap-2">
+                <!-- Riwayat pencarian akan ditampilkan di sini -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mendapatkan elemen-elemen DOM
+        const searchInput = document.getElementById('searchInput');
+        const searchButton = document.getElementById('searchButton');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const historyContainer = document.getElementById('historyContainer');
+        const historyList = document.getElementById('historyList');
+        const tabIcd10 = document.getElementById('tab-icd10');
+        const tabIcd9 = document.getElementById('tab-icd9');
+
+        // State aplikasi
+        let currentType = 'icd10';
+        // Menyimpan riwayat pencarian dalam sebuah array
+        let searchHistory = [];
+        const MAX_HISTORY = 5;
+
+        // Fungsi untuk menampilkan indikator loading
+        function showLoading() {
+            resultsContainer.innerHTML = `
+                <div class="flex justify-center items-center py-8">
+                    <svg class="animate-spin -ml-1 mr-3 h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="text-gray-600 font-medium">AI sedang mencari jawaban...</span>
+                </div>
+            `;
+        }
+        
+        // Fungsi untuk membersihkan dan menampilkan hasil
+        function renderResults(results) {
+            resultsContainer.innerHTML = ''; // Hapus hasil sebelumnya
+
+            if (results.length === 0) {
+                resultsContainer.innerHTML = `
+                    <p class="text-center text-gray-500">
+                        Tidak ada hasil yang ditemukan untuk kata kunci tersebut.
+                    </p>
+                `;
+                return;
+            }
+
+            // Buat tabel untuk menampilkan hasil
+            const table = document.createElement('table');
+            table.className = 'w-full text-left border-collapse';
+            
+            // Tambahkan header tabel
+            const thead = table.createTHead();
+            const headerRow = thead.insertRow();
+            headerRow.className = 'bg-gray-100';
+            headerRow.innerHTML = `<th class="px-4 py-2 border-b-2 border-gray-200 text-gray-600 font-bold">Kode</th><th class="px-4 py-2 border-b-2 border-gray-200 font-bold text-gray-600">Deskripsi</th>`;
+
+            // Tambahkan baris data
+            const tbody = table.createTBody();
+            results.forEach(result => {
+                const row = tbody.insertRow();
+                row.className = 'hover:bg-gray-50 transition-colors duration-100';
+                row.innerHTML = `<td class="px-4 py-2 border-b border-gray-200 font-medium text-blue-600">${result.code}</td><td class="px-4 py-2 border-b border-gray-200">${result.description}</td>`;
+            });
+            resultsContainer.appendChild(table);
+        }
+
+        // Fungsi untuk menambahkan dan menampilkan riwayat pencarian
+        function renderHistory() {
+            historyList.innerHTML = ''; // Hapus riwayat sebelumnya
+            if (searchHistory.length > 0) {
+                historyContainer.classList.remove('hidden');
+                searchHistory.forEach(query => {
+                    const button = document.createElement('button');
+                    button.textContent = query;
+                    button.className = 'px-4 py-2 rounded-full bg-blue-100 text-blue-800 font-medium hover:bg-blue-200 transition-colors duration-100';
+                    button.addEventListener('click', () => {
+                        searchInput.value = query;
+                        searchICDWithAI();
+                    });
+                    historyList.appendChild(button);
+                });
+            } else {
+                historyContainer.classList.add('hidden');
+            }
+        }
+
+        // Fungsi utama untuk melakukan pencarian dengan AI
+        async function searchICDWithAI() {
+            const query = searchInput.value.trim();
+            if (!query) {
+                renderResults([]);
+                return;
+            }
+
+            // Tambahkan query ke riwayat dan perbarui tampilan
+            if (!searchHistory.includes(query)) {
+                searchHistory.unshift(query); // Tambahkan ke depan
+                if (searchHistory.length > MAX_HISTORY) {
+                    searchHistory.pop(); // Hapus yang terlama jika melebihi batas
+                }
+            }
+            renderHistory();
+
+            // Tampilkan loading screen dengan cepat
+            showLoading();
+
+            // Tentukan prompt berdasarkan mode pencarian (ICD-10 atau ICD-9)
+            const promptType = currentType === 'icd10' ? "diagnosa ICD-10" : "tindakan ICD-9";
+            
+            // Prompt untuk AI: minta model untuk memberikan kode dan deskripsi dalam format JSON
+            const prompt = `
+                Berikan 5 kode dan deskripsi ${promptType} yang paling relevan untuk kata kunci "${query}".
+                Output harus dalam format JSON.
+                Format JSON harus berupa array objek, di mana setiap objek memiliki properti "code" (string) dan "description" (string).
+                Contoh:
+                [
+                    { "code": "A91", "description": "Demam dengue (DBD) dengan syok" },
+                    { "code": "A90", "description": "Demam dengue tanpa syok" }
+                ]
+                Pastikan hanya mengembalikan JSON, tidak ada teks lain sebelum atau sesudahnya.
+            `;
+
+            try {
+                // Konfigurasi untuk memanggil API Gemini
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                
+                const payload = { 
+                    contents: chatHistory,
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            "type": "ARRAY",
+                            "items": {
+                                "type": "OBJECT",
+                                "properties": {
+                                    "code": { "type": "STRING" },
+                                    "description": { "type": "STRING" }
+                                }
+                            }
+                        }
+                    }
+                };
+
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                // Cek status respons
+                if (!response.ok) {
+                    throw new Error(`Kesalahan API: ${response.status} ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                
+                // Cek struktur respons yang diharapkan
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    
+                    const jsonString = result.candidates[0].content.parts[0].text;
+                    const parsedData = JSON.parse(jsonString);
+                    renderResults(parsedData);
+                } else {
+                    renderResults([]);
+                }
+            } catch (error) {
+                console.error("Kesalahan saat memanggil API AI:", error);
+                resultsContainer.innerHTML = `<p class="text-center text-red-500">Terjadi kesalahan saat mencari. Silakan coba lagi.</p>`;
+            }
+        }
+
+        // Event listeners untuk tombol dan input
+        searchButton.addEventListener('click', searchICDWithAI);
+        searchInput.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') {
+                searchICDWithAI();
+            }
+        });
+
+        // Event listeners untuk tab
+        tabIcd10.addEventListener('click', () => {
+            currentType = 'icd10';
+            tabIcd10.classList.remove('bg-gray-200', 'text-gray-700');
+            tabIcd10.classList.add('bg-blue-600', 'text-white');
+            tabIcd9.classList.remove('bg-blue-600', 'text-white');
+            tabIcd9.classList.add('bg-gray-200', 'text-gray-700');
+            searchInput.placeholder = 'Cari diagnosa, misalnya: demam berdarah';
+            searchInput.value = '';
+            resultsContainer.innerHTML = '<p class="text-center text-gray-500">Ketik kata kunci atau kode untuk memulai pencarian.</p>';
+        });
+
+        tabIcd9.addEventListener('click', () => {
+            currentType = 'icd9';
+            tabIcd9.classList.remove('bg-gray-200', 'text-gray-700');
+            tabIcd9.classList.add('bg-blue-600', 'text-white');
+            tabIcd10.classList.remove('bg-blue-600', 'text-white');
+            tabIcd10.classList.add('bg-gray-200', 'text-gray-700');
+            searchInput.placeholder = 'Cari tindakan, misalnya: apendektomi';
+            searchInput.value = '';
+            resultsContainer.innerHTML = '<p class="text-center text-gray-500">Ketik kata kunci atau kode untuk memulai pencarian.</p>';
+        });
+
+        // Tampilkan hasil saat halaman pertama kali dimuat
+        resultsContainer.innerHTML = '<p class="text-center text-gray-500">Ketik kata kunci atau kode untuk memulai pencarian.</p>';
+        renderHistory();
+
+    </script>
+</body>
+</html>
